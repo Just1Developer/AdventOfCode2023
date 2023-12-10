@@ -1,7 +1,7 @@
 ﻿
 using ConsoleApp1;
 
-Day6.run();
+Day10.run();
 
 /*
 using System.Text;
