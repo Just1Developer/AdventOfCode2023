@@ -9,6 +9,7 @@
             //path = PATH + "day10example2.txt";
             //path = PATH + "day10example3.txt";
             //path = PATH + "day10example4.txt";
+            //path = PATH + "day10example5.txt";
             string[] lines = File.ReadAllLines(path);
 
             Task(lines);
@@ -35,12 +36,18 @@
                 IS_EAST_CONNECTED = new List<char> { '7', '-', 'J' },    // Down, Straight, Up
                 IS_WEST_CONNECTED = new List<char> { 'F', '-', 'L' };    // Down, Straight, Up
 
+            private List<char> parallel_UpDown = new() { 'F', 'L', 'J', '7', '|' };
+            private List<char> parallel_LeftRight = new() { 'F', 'L', 'J', '7', '-' };
+            
+            List<char> GetParallelTiles(char parallel)
+            {
+                return null;
+            }
+
             MapWrapper Map;
             Coordinate? Start;
             internal int LoopLength = -1;
             List<int> PipelineTilesHashes = new List<int>();
-
-
 
             internal PipelineMap(string[] lines)
 			{
@@ -50,7 +57,7 @@
                 for (int i = 0; i < lines.Length; i++)
                 {
                     string line = lines[i];
-                    for (int j = 0; j < lines.Length; j++)
+                    for (int j = 0; j < line.Length; j++)
 					{
                         char c = line[j];
                         if (c == 'S')
@@ -64,7 +71,7 @@
                 if (Start == null) { Start = new(0, 0); return; }
 
                 // Go through the Loop and count steps, the farthest is the middle of the number of steps
-                char currentChar = 'S';
+                char currentChar;
                 int steps = 0;
                 Coordinate current = Start, previousDir = NUL;
                 do
@@ -100,6 +107,9 @@
             internal int CalculateEnclosedTiles()
 			{
                 // Go through each tile. Every tile will be assigned one of these values:
+                // [NEW]:
+                // -3: Squeezable (insert) (1), 1s have squeezed through here. This counts as 1. Maybe scrap this and directly make into 1
+                // -2: Squeezable (insert), 1s can squeeze through here. To be inserted between pipelines
                 // -1: Tile is a pipeline
                 // 0: Tile might be trapped: This is because this is the default value.
                 // 1: Tile is definitely free
@@ -112,6 +122,12 @@
                         if (PipelineTilesHashes.Contains(coord.GetHashCode()))
 						{
                             statusMap[x, y] = -1;
+                            // Check if right is parallel
+                            if (y < Map.Height - 1)
+                            {
+                                y++;
+                                
+                            }
                             continue;
                         }
                         if (Map.IsOnEdge(coord))
@@ -175,6 +191,16 @@
                             {
                                 Console.ForegroundColor = ConsoleColor.Gray;
                                 Console.Write("#");
+                            }
+                            else if (i == -2)
+                            {
+                                Console.ForegroundColor = ConsoleColor.White;
+                                Console.Write(":");
+                            }
+                            else if (i == -3)
+                            {
+                                Console.ForegroundColor = ConsoleColor.DarkCyan;
+                                Console.Write("1");
                             }
                             else
                             {
@@ -273,6 +299,12 @@
 			{
                 return $"({X}, {Y})";
 			}
+
+            public static int GetCoordHash(int x, int y)
+            {
+                // Same calculation, but without coordinate object
+                return (x << 15) + y;
+            }
 		}
 
         internal class MapWrapper
@@ -314,6 +346,144 @@
                 if (coord.Y == Width - 1) return true;
                 return false;
 			}
+        }
+        
+        internal class DoubleSizeMapWrapper
+        {
+            private char[][] CharMap;
+            private int[][] Map;
+            internal readonly int Width, Height;
+
+            public DoubleSizeMapWrapper(string[] map, List<int> loopTileHashes)
+            {
+                // Insertions
+                Map = new int[map.Length * 2 - 1][];
+                CharMap = new char[map.Length * 2 - 1][];
+                int arrLen = map[0].Length * 2 - 1;
+                
+                Height = map.Length;
+                Width = Height == 0 ? 0 : map[0].Length;  // Assume map is not an empty array.
+                
+                // Integer codes:
+                // 0: Potentially enclosed tile.
+                // 1: Free tile
+                // -1: Loop Tile - also in between
+                // -2: Squeezable tile (in between) (enclosed)
+                // -3: Squeezable tile (free)
+                
+                // First, fill in the normal map
+                for (int y = 0; y < map.Length; y += 2)
+                {
+                    // New line
+                    Map[y] = new int[arrLen];
+                    CharMap[y] = new char[arrLen];
+                    
+                    for (int x = 0; x < map[y].Length; x += 2)
+                    {
+                        // If this should be != 0, set value
+                        if (loopTileHashes.Contains(Coordinate.GetCoordHash(x / 2, y / 2)))
+                        {
+                            Map[y][x] = -1; // Loop tile
+                            CharMap[y][x] = map[y / 2][x / 2];
+                            continue;
+                        }
+                        if (IsOnEdge(x, y))
+                        {
+                            Map[y][x] = 1;  // Free tile
+                        }
+                        CharMap[y][x] = '.';
+                    }
+                }
+                
+                // Now that we have the normal map, let's fill in the gap rows and columns
+                // This is for the rows only:
+                for (int y = 1; y < map.Length; y += 2)
+                {
+                    // New line
+                    Map[y] = new int[arrLen];
+                    CharMap[y] = new char[arrLen];
+                    
+                    for (int x = 1; x < map[y].Length; x += 2)
+                    {
+                        if (x == y)
+                        {
+                            Map[y][x] = -3;  // Not countable i think
+                            CharMap[y][x] = '*';
+                            continue;
+                        }
+                        // Determine squeeze-ability: Are the map tiles below squeezable?
+                        // Better yet, are they NOT squeezable?
+                        if (PipelineMap.IS_NORTH_CONNECTED.Contains(CharMap[y - 1][x])
+                            && PipelineMap.IS_SOUTH_CONNECTED.Contains(CharMap[y + 1][x]))
+                        {
+                            Map[y][x] = -3; // Loop tile
+                            CharMap[y][x] = map[y / 2][x / 2];
+                            continue;
+                        }
+                        Map[y][x] = -2;  // Free tile, squeezable
+                        CharMap[y][x] = '*';
+                    }
+                }
+                
+                for (int i = 0; i < Map.Length; i++)
+                {
+                    // New line
+                    Map[i] = new int[arrLen];
+
+                    if (i % 2 == 0)
+                    {
+                        // Normal line
+                        //for (int x = 0; x < arrLen; x += 2)
+                        //{
+                        //    // Fill
+                        //}
+                    }
+                    else
+                    {
+                        // In-between line
+                    }
+                }
+            }
+
+            internal void Insert(int x, int y)
+            {
+                
+            }
+            
+            internal int this[int x, int y]
+            {
+                get
+                {
+                    if (x < 0 || x >= Map.Length || y < 0 || y >= Map[x * 2 - 1].Length)
+                    {
+                        // Coordinate is out of range, return char that will definitely return false in the contains check
+                        return 'ö';
+                    }
+
+                    return Map[x * 2 - 1][y * 2 - 1];
+                }
+            }
+
+            internal bool IsOnEdge(Coordinate coord)
+            {
+                if (coord.X == 0) return true;
+                if (coord.X == Height - 1) return true;
+                if (coord.Y == 0) return true;
+                if (coord.Y == Width - 1) return true;
+                return false;
+            }
+
+            internal bool IsOnEdge(int x, int y)
+            {
+                // Adjust x and y:
+                x /= 2;
+                y /= 2;
+                if (x == 0) return true;
+                if (x == Height - 1) return true;
+                if (y == 0) return true;
+                if (y == Width - 1) return true;
+                return false;
+            }
         }
     }
 }
