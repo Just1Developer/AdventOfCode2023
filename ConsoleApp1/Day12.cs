@@ -12,10 +12,11 @@ public class Day12 : Path
         string path = PATH + "day12.txt";
         //path = PATH + "day12example.txt";
         //path = PATH + "day12example2.txt";
+        path = PATH + "day12example3.txt";
         string[] lines = File.ReadAllLines(path);
 
-        //_Task(lines);
-        TaskMultithreaded(lines).Wait();
+        _Task(lines);
+        //TaskMultithreaded(lines).Wait();
     }
 
     private static void _Task(string[] lines)
@@ -24,6 +25,8 @@ public class Day12 : Path
         int sum = 0;
         foreach (string line in lines)
         {
+	        if (line.StartsWith("//")) continue;
+
             SpringRow row = new SpringRow(line, ++l);
             Console.WriteLine($"Calculating line {l}/{lines.Length} with {row.NumbersString}...");
             int arrangements = row.GetPossibilityCount();
@@ -62,7 +65,7 @@ public class Day12 : Path
     // The start and workerThreads logic is abstracted from ChatGPT code
     private static List<Task> threadPoolTasks;
     private static int coreCount;
-    private const double TOTAL_CORE_DIVIDER = 1;  // On my pc with 16 Cores: 1.1 = 14 Cores, 1.15 = 13 Cores, 1.3 = 12 Cores
+    private const double TOTAL_CORE_DIVIDER = 0.5;  // On my pc with 16 Cores: 1.1 = 14 Cores, 1.15 = 13 Cores, 1.3 = 12 Cores
     public static async Task CalculateAllRowsSimul()
     {
         // Create a task for each core in the system.
@@ -127,6 +130,8 @@ public class Day12 : Path
             {
                 if (c == '?') QuestionCounts++;
             }
+
+            Optimize();
         }
         
         //region Task 2 Transforms
@@ -153,6 +158,118 @@ public class Day12 : Path
             return builder.ToString();
         }
         
+        internal void Optimize()
+		{
+            if (QuestionCounts == 0) return;
+            // Assume numbers and all are set.
+            // First step: Get all segments of ? and #
+            List<string> brokenSegments = new List<string>();
+            foreach (string s in Springs.Split('.'))
+			{
+                if (string.IsNullOrWhiteSpace(s)) continue;
+                brokenSegments.Add(s);
+			}
+            if (brokenSegments.Count == 0) return;  // Nothing to optimize
+            
+            // Analyze start:
+            string start = brokenSegments[0];
+            var numHashQuestions = CountChars(start);
+            int numReqFirstSegment = Numbers[0];
+
+            if (numReqFirstSegment == numHashQuestions.Item1)
+			{
+                // Satisfied, all ? are .
+                Springs = ReplaceFirst(Springs, start, start.Replace('?', '.'));
+                QuestionCounts -= numHashQuestions.Item2;
+            }
+            else if (numReqFirstSegment == start.Length)
+            {
+                // Satisfied, all ? are #
+                Springs = ReplaceFirst(Springs, start, start.Replace('?', '#'));
+                QuestionCounts -= numHashQuestions.Item2;
+            }
+
+            if (brokenSegments.Count == 1) return;  // Nothing to optimize anymore
+
+            // Analyze end:
+            string end = brokenSegments[brokenSegments.Count - 1];
+            numHashQuestions = CountChars(end);
+            numReqFirstSegment = Numbers[Numbers.Length - 1];
+
+            if (numReqFirstSegment == numHashQuestions.Item1)
+            {
+	            // Satisfied, all ? are .
+	            Springs = ReplaceLast(Springs, end, end.Replace('?', '.'));
+	            QuestionCounts -= numHashQuestions.Item2;
+            }
+            else if (numReqFirstSegment == end.Length)
+            {
+	            // Satisfied, all ? are #
+	            Springs = ReplaceLast(Springs, end, end.Replace('?', '#'));
+	            QuestionCounts -= numHashQuestions.Item2;
+            }
+        }
+
+        static (int, int) CountChars(string s, char l = '#', char k = '?') { int i = 0, j = 0; foreach (char c in s) if (c == l) i++; else if (c == k) j++; return (i, j); }
+
+        /* Mine :( GPT-4 didnt like it
+        static void ReplaceFirstOld(ref string str, string old, string replacement)
+        {
+            if (!str.Contains(old)) return;
+            for (int i = 0; i <= str.Length - old.Length; i++)
+			{
+                if (str.Substring(i, old.Length) == old)
+				{
+                    // Replace.
+                    string subStart = str.Substring(0, i);
+                    string subEnd = str.Substring(i + old.Length);
+                    str = subStart + replacement + subEnd;
+                    return;
+				}
+			}
+		}//*/
+        static void ReplaceLast(ref string str, string old, string replacement)
+        {
+	        if (!str.Contains(old)) return;
+	        for (int i = str.Length - old.Length; i >= 0; i--)
+	        {
+		        if (str.Substring(i, old.Length) == old)
+		        {
+			        // Replace.
+			        string subStart = str.Substring(0, i);
+			        string subEnd = str.Substring(i + old.Length);
+			        str = subStart + replacement + subEnd;
+			        return;
+		        }
+	        }
+        }
+        static string ReplaceLast(string str, string old, string replacement)
+        {
+	        if (!str.Contains(old)) return str;
+	        for (int i = str.Length - old.Length; i >= 0; i--)
+	        {
+		        if (str.Substring(i, old.Length) == old)
+		        {
+			        // Replace.
+			        string subStart = str.Substring(0, i);
+			        string subEnd = str.Substring(i + old.Length);
+			        return subStart + replacement + subEnd;
+		        }
+	        }
+	        return str;
+        }
+        static string ReplaceFirst(string str, string old, string replacement)
+        {
+            if (string.IsNullOrEmpty(str) || string.IsNullOrEmpty(old) || !str.Contains(old))
+                return str;
+
+            int index = str.IndexOf(old);
+            if (index < 0)
+                return str;
+
+            return str.Substring(0, index) + replacement + str.Substring(index + old.Length);
+        }
+
         //endregion
 
         internal int GetPossibilityCount()
@@ -160,7 +277,7 @@ public class Day12 : Path
             if (QuestionCounts == 0) return 1;
             
             int possibilities = 0;
-            long bitboard = (long) Math.Pow(2, QuestionCounts) - 1;
+            ulong bitboard = (ulong) Math.Pow(2, QuestionCounts) - 1;
             while (bitboard >= 0)
             {
                 // Just so I have it while debugging
@@ -173,7 +290,7 @@ public class Day12 : Path
         // So, there is a smart way and a dumb way to approach this.
         // I say we do bruteforce and see if it gets us anywhere.
         // If not, we have to get a little smarter.
-        private bool IsValid(long constellation)
+        private bool IsValid(ulong constellation)
         {
             // Here is how this works:
             // constellation is a bitboard, 0 = . (healthy), 1 = # (damaged)
@@ -189,7 +306,7 @@ public class Day12 : Path
                     constructor.Append(c);
                     continue;
                 }
-                if (c != '?') throw new Exception($"IsValid(long): Unknown character {c} in {Springs}");
+                if (c != '?') throw new Exception($"IsValid(ulong): Unknown character {c} in {Springs}");
                 
                 // c is ?
                 if (((constellation >> --shiftIndex) & 1) == 0) constructor.Append('.');
@@ -198,7 +315,7 @@ public class Day12 : Path
             
             bool isValid = IsValid(constructor.ToString());
             
-            //if(isValid) printConstellation(Springs, constructor.ToString(), constellation, isValid);
+            if(isValid) printConstellation(Springs, constructor.ToString(), constellation, isValid);
 
             return isValid;
         }
@@ -244,13 +361,18 @@ public class Day12 : Path
             return currentIndex == Numbers.Length;
         }
 
-        private void printConstellation(string question, string finished, long mask, bool valid)
+        private bool IsValidBitboard(ulong constellation)
+		{
+            return false;
+		}
+
+        private void printConstellation(string question, string finished, ulong mask, bool valid)
         {
-            // Style: Const: (question) (long mask) -> (finished) (valid)(invalid)
+            // Style: Const: (question) (ulong mask) -> (finished) (valid)(invalid)
             Console.Write("Const: ");
             WriteString(question);
             Console.Write(" (via ");
-            WriteString(Convert.ToString(mask, 2));
+            WriteString(Convert.ToString((long) mask, 2));
             Console.Write(")  ->  ");
             WriteString(finished);
             Console.Write("  (");
