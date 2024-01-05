@@ -1,3 +1,3 @@
 ﻿using ConsoleApp1;
 
-Day16.run();
+Day18.run();
